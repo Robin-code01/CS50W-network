@@ -1,11 +1,13 @@
 from django.contrib.auth import authenticate, login, logout
 from django.db import IntegrityError
 from django.http import HttpResponse, HttpResponseRedirect
+from django.http import JsonResponse
+import json
 from django.shortcuts import render
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 
-from .models import User
+from .models import User, Post
 
 
 def index(request):
@@ -23,7 +25,7 @@ def login_view(request):
         # Check if authentication successful
         if user is not None:
             login(request, user)
-            return HttpResponseRedirect(reverse("index"))
+            return HttpResponseRedirect(reverse("network:index"))
         else:
             return render(request, "network/login.html", {
                 "message": "Invalid username and/or password."
@@ -34,7 +36,7 @@ def login_view(request):
 
 def logout_view(request):
     logout(request)
-    return HttpResponseRedirect(reverse("index"))
+    return HttpResponseRedirect(reverse("network:index"))
 
 
 def register(request):
@@ -59,6 +61,53 @@ def register(request):
                 "message": "Username already taken."
             })
         login(request, user)
-        return HttpResponseRedirect(reverse("index"))
+        return HttpResponseRedirect(reverse("network:index"))
     else:
         return render(request, "network/register.html")
+
+
+def user(request):
+    isAuth = request.user.is_authenticated
+    username = request.user.username
+
+    return JsonResponse({
+        "is_authenticated": isAuth,
+        "username": username,
+    })
+
+
+@login_required
+def new_post(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON format."}, status=400)
+        content = data.get("content", "")
+        if content:
+            Post.objects.create(user=request.user, content=content)
+            return JsonResponse({"message": "Post created successfully."}, status=201)
+        else:
+            return JsonResponse({"error": "Content cannot be empty."}, status=400)
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
+
+
+def posts(request):
+    if request.method == "GET":
+        posts = Post.objects.all().order_by("-timestamp")
+        
+        posts_data = []
+        
+        for post in posts:
+            posts_data.append(
+                {
+                    "id": post.id,
+                    "user": post.user.username,
+                    "content": post.content,
+                    "timestamp": post.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
+        return JsonResponse(posts_data, safe=False)
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
