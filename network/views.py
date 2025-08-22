@@ -1,3 +1,4 @@
+from binascii import Error
 from django.contrib.auth import authenticate, login, logout
 from django.db import IntegrityError
 from django.http import HttpResponse, HttpResponseRedirect
@@ -6,10 +7,13 @@ import json
 from django.shortcuts import render
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.core.paginator import Paginator
 
 from .models import User, Post
 
 
+@ensure_csrf_cookie
 def index(request):
     return render(request, "network/index.html")
 
@@ -65,7 +69,6 @@ def register(request):
     else:
         return render(request, "network/register.html")
 
-
 def user(request):
     isAuth = request.user.is_authenticated
     username = request.user.username
@@ -109,5 +112,36 @@ def posts(request):
                 }
             )
         return JsonResponse(posts_data, safe=False)
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
+
+def pagination(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            current_page = int(data.get("currentPage"))
+            posts_per_page = int(data.get("postsPerPage"))
+        except Error as e:
+            return JsonResponse({"error": e, "cp": current_page}, status=400)
+
+        posts = Post.objects.all().order_by("-timestamp")
+        paginate = Paginator(posts, posts_per_page)
+        total_pages = paginate.num_pages
+        total_posts = posts.count()
+
+        if current_page < 1 or current_page > total_pages:
+            return JsonResponse({"error": "Page out of range."}, status=400)
+        
+        page = paginate.get_page(current_page)
+
+        return JsonResponse({
+            "current_posts": list(page.object_list.values(
+                "id", "user__username", "content", "timestamp"
+            )),
+          #  "currentPage": current_page,
+            "total_pages": int(total_pages),
+            "has_next_page": bool(page.has_next()),
+            "has_previous_page": bool(page.has_previous()),
+        }, status=200)
 
     return JsonResponse({"error": "Invalid request method."}, status=405)

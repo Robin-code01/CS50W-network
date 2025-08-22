@@ -12,4 +12,5 @@ urlpatterns = [
     path("user", views.user, name="user"),
     path("new_post", views.new_post, name="new_post"),
     path("posts", views.posts, name="posts"),
+    path("api/pagination", views.pagination, name="pagination"),
 ]

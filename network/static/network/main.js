@@ -4,7 +4,6 @@ function getCookie(name) {
     const cookies = document.cookie.split(";");
     for (let i = 0; i < cookies.length; i++) {
       const cookie = cookies[i].trim();
-      // Does this cookie string begin with the name we want?
       if (cookie.substring(0, name.length + 1) === name + "=") {
         cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
         break;
@@ -145,32 +144,41 @@ function new_post_submit({ state, setState }) {
   }
 }
 
-function fetch_posts({state, setState}) {
-  fetch("/posts", {
-    method: "GET"})
+function fetch_posts({pagination, setPagination}) {
+  fetch("/api/pagination", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRFToken": getCookie("csrftoken"),
+    },
+    body: JSON.stringify({
+      currentPage: pagination.currentPage,
+      postsPerPage: pagination.postsPerPage,
+    }),
+  })
     .then((response) => response.json())
     .then((result) => {
-      if (!result) {
-        throw new Error("No response from server");
-      }
-      console.log(`Fetched posts: ${JSON.stringify(result)}`);
       if (result) {
-        const posts = result.map((post) => (
-          <div key={post.id} className="post">
-            <p>{post.content}</p>
-            <small>Posted by <strong>{post.user}</strong> on {new Date(post.timestamp).toLocaleString()}</small>
-          </div>
-        ));
-        setState((prev) => ({
+        setPagination((prev) => ({
           ...prev,
-          new_post_view: "none",
-          posts_view: "block",
-          posts: posts,
+          totalPages: result.total_pages,
+          has_next_page: result.has_next_page,
+          has_previous_page: result.has_previous_page,
+          current_posts: result.current_posts.map((post) => (
+            <div key={post.id} className="post">
+              <p>{post.content}</p>
+              <small>Posted by <strong>{post.user__username}</strong> on {new Date(post.timestamp).toLocaleString()}</small>
+            </div>
+          )),
         }));
+        console.log("current post state:", pagination);
       } else {
-        alert("Error fetching posts: " + result.error);
+        console.error("Error fetching pagination data:", result);
       }
     })
+    .catch((error) => {
+      console.error("Error fetching pagination data:", error);
+    });
 }
 
 function App() {
@@ -182,6 +190,20 @@ function App() {
     posts_view: "block",
     posts: [],
   });
+  const [pagination, setPagination] = React.useState({
+    currentPage: 1,
+    totalPages: 1,
+    postsPerPage: 10,
+    has_next_page: null,
+    has_previous_page: null,
+    current_posts: [],
+  });
+
+
+  // // Pagination
+  // React.useEffect(() => {
+
+  // }, [pagination.currentPage, pagination.postsPerPage, pagination.totalPages, pagination.has_next]);
 
   React.useEffect(() => {
     fetch("/user")
@@ -217,10 +239,10 @@ function App() {
 
   React.useEffect(() => {
     if (state.posts_view === "block") {
-      fetch_posts({ state, setState });
+      fetch_posts({ pagination, setPagination });
     }
     // Only run when posts_view changes
-  }, [state.posts_view]);
+  }, [state.posts_view, pagination.currentPage, pagination.postsPerPage, pagination.totalPages, pagination.has_next]);
 
   return (
     <>
@@ -228,8 +250,8 @@ function App() {
       <div className="app">
         <div id="posts_view" style={{ display: state.posts_view }}>
           <h2>All Posts</h2>
-          {state.posts.length > 0 ? (
-            state.posts
+          {pagination.current_posts.length > 0 ? (
+            pagination.current_posts
           ) : (
             <p>No posts available. Create a new post!</p>
           )}
@@ -258,6 +280,40 @@ function App() {
             </button>
           </form>
         </div>
+      </div>
+
+      <div class="pagination">
+        <span class="step-links">
+            { pagination.has_previous_page && (
+                <a href="" onClick={
+                    (event) => {
+                        event.preventDefault();
+                        setPagination((prev) => ({
+                            ...prev,
+                            currentPage: prev.currentPage - 1,
+                        }));
+                        fetch_posts({ pagination, setPagination });
+                    }
+                }>Previous ({pagination.currentPage - 1})</a>
+            ) }
+                
+            <span class="current">
+                Page { pagination.currentPage } of { pagination.totalPages }.
+            </span>
+
+            { pagination.has_next_page && (
+                <a href="" onClick={
+                    (event) => {
+                        event.preventDefault();
+                        setPagination((prev) => ({
+                            ...prev,
+                            currentPage: prev.currentPage + 1,
+                        }));
+                        fetch_posts({ pagination, setPagination });
+                    }
+                }>Next ({pagination.currentPage + 1})</a>
+            ) }
+        </span>
       </div>
     </>
   );
